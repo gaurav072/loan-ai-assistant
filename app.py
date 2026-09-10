@@ -1,6 +1,7 @@
 import streamlit as st
 
 from services.loan_assistant import analyze_customer
+
 from services.memory_service import (
     get_customer_context,
     update_customer_context,
@@ -26,7 +27,7 @@ st.set_page_config(
 st.title("🏦 Loan Officer AI Assistant")
 
 st.caption(
-    "Customer Context + RAG + Gemini"
+    "Customer Context + Deterministic Rules + RAG + Gemini"
 )
 
 
@@ -43,6 +44,20 @@ with st.sidebar:
     name = st.text_input(
         "Customer Name",
         value=current_customer.get("name", "")
+    )
+
+    # ----------------------------------------------
+    # PII - Stored in customer context
+    # ----------------------------------------------
+
+    email = st.text_input(
+        "Email",
+        value=current_customer.get("email", "")
+    )
+
+    phone = st.text_input(
+        "Phone",
+        value=current_customer.get("phone", "")
     )
 
     monthly_income = st.number_input(
@@ -105,7 +120,9 @@ with st.sidebar:
     )
 
     employment_index = (
-        employment_options.index(current_employment)
+        employment_options.index(
+            current_employment
+        )
         if current_employment in employment_options
         else 0
     )
@@ -176,6 +193,11 @@ if clear_customer:
         None
     )
 
+    st.session_state.pop(
+        "last_question",
+        None
+    )
+
     st.rerun()
 
 
@@ -220,6 +242,14 @@ if check_eligibility:
             property_value=property_value
         )
 
+        # Add PII to memory.
+        # These fields are NOT required by Gemini.
+
+        st.session_state.customer_context.update({
+            "email": email,
+            "phone": phone
+        })
+
         customer_context = get_customer_context()
 
         # ------------------------------------------
@@ -227,23 +257,32 @@ if check_eligibility:
         # ------------------------------------------
 
         with st.spinner(
-            "Retrieving policies and analyzing application..."
+            "Applying deterministic rules, "
+            "retrieving policies and analyzing..."
         ):
 
-            answer, sources = analyze_customer(
-                customer_context,
-                question
-            )
+            try:
 
-        st.session_state.analysis_result = answer
+                answer, sources = analyze_customer(
+                    customer_context,
+                    question
+                )
 
-        st.session_state.analysis_sources = sources
+                st.session_state.analysis_result = answer
 
-        st.session_state.last_question = question
+                st.session_state.analysis_sources = sources
+
+                st.session_state.last_question = question
+
+            except Exception as e:
+
+                st.error(
+                    f"Unable to analyze customer: {str(e)}"
+                )
 
 
 # ==================================================
-# DISPLAY CUSTOMER CONTEXT
+# DISPLAY CUSTOMER
 # ==================================================
 
 if customer_context.get("name"):
@@ -320,7 +359,7 @@ if st.session_state.get("last_question"):
 # DISPLAY AI ANALYSIS
 # ==================================================
 
-if "analysis_result" in st.session_state:
+if st.session_state.get("analysis_result"):
 
     st.divider()
 
@@ -348,11 +387,14 @@ if "analysis_result" in st.session_state:
                 st.session_state.analysis_sources
             ):
 
-                st.write("•", source)
+                st.write(
+                    "•",
+                    source
+                )
 
 
 # ==================================================
-# MEMORY / CUSTOMER CONTEXT
+# MEMORY
 # ==================================================
 
 with st.expander(

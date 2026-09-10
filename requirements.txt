@@ -4,3 +4,5 @@ langchain-google-genai
 langchain-chroma
 langchain-community
 chromadb
+python-dotenv
+torchvision
